@@ -1,0 +1,116 @@
+* {
+    margin: 0;
+    box-sizing: border-box;
+    color: #ccc;
+    border-color: #444;
+    font-family: consolas;
+}
+body {
+    background-color: #333;
+    width: 100vw;
+    height: 100vh;
+    padding: 3rem 1rem 3rem;
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+    align-items: center;
+}
+header {
+    position: fixed;
+    top: 0; left: 0; right: 0;
+    background-color: #0002;
+    z-index: 1;
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: start;
+    align-items: center;
+    padding: 0.5rem;
+}
+.header__filename {
+    margin-right: auto;
+}
+/* main {
+    height: 100vh;
+    padding: 3rem 1rem 3rem;
+} */
+footer {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    background-color: #0002;
+    z-index: 1;
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: start;
+    align-items: center;
+}
+.landing {
+    /* height: 100%; */
+}
+/* .landing {
+    position: fixed;
+    width: 100vw; height: 100vh;
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+    align-items: center;
+} */
+.dropoverlay {
+    position: fixed;
+    left: 0.5rem; top: 0.5rem; right: 0.5rem; bottom: 0.5rem;
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+    align-items: center;
+    font-size: 2rem;
+    border-width: 8px;
+    border-style: dashed;
+    background-color: #ccc4;
+    box-shadow: 0 0 0 0.5rem #ccc4;
+    z-index: 2;
+}
+.chartarea {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-flow: column nowrap;
+    justify-content: center;
+    align-items: center;
+}
+.shortcut {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: start;
+    align-items: center;
+    padding: 0.5rem;
+    gap: 0.5rem;
+}
+.shortcut__pair {
+    display: flex;
+    flex-flow: row nowrap;
+    justify-content: start;
+    align-items: center;
+    gap: 0.2rem;    
+}
+.shortcut__key {
+    border: 1px solid #ccc;
+    border-radius: 0.2rem;
+    padding: 0.1rem 0.2rem;
+    margin: 0 0.1rem;
+}
+.--hidden {
+    visibility: hidden;
+}
+.--collapse {
+    display: none;
+    /* visibility: collapse; */
+}
+.--large {
+    font-size: 1.5rem;
+}
+.--small {
+    font-size: 0.8rem;
+}
+.--full {
+    width: 100%;
+    height: 100%;
+}

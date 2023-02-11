@@ -1,0 +1,510 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <title>massif-mieeru</title>
+  <link href="style.css" rel="stylesheet">
+</head>
+
+<body id="body">
+  <div class="landing" id="landing">
+    <div class="--large">&#x1F308;massif-mieeru</div>
+    <div>Drop your massif.out.* here</div>
+  </div>
+
+  <div class="chartarea --collapse" id="chartarea">
+    <canvas id="chart" width="0" height="0"></canvas>
+  </div>
+
+  <header>
+    <div class="header__filename --large" id="filename"></div>
+    <input type="file" id="fileinput">
+  </header>
+
+  <footer>
+    <div class="shortcut --small --hidden" id="shortcut">
+      <div class="shortcut__pair"><div class="shortcut__key">ESC</div>Clear selection</div>
+      <div class="shortcut__pair"><div class="shortcut__key">Ctrl+C</div>Copy tooltip contents</div>
+      <div class="shortcut__pair"><div class="shortcut__key">Ctrl+Click</div>Multi selection</div>
+    </div>
+  </footer>
+
+  <div class="dropoverlay --collapse" id="dropoverlay"></div>
+</body>
+
+<!-- -------------------------------------------------- -->
+
+<script src="chart.js"></script>
+<script src="massif.js"></script>
+<script>
+(function() {
+// Constants
+
+const kChartTitleFontSize = 18.0;
+const kChartScaleFontSize = 18.0;
+const kChartElementBorderWidth = 1.0;
+const kChartElementPointRadius = 1.5;
+const kChartLegendWidthMax = 300;
+const kTotalLabel = "Total";
+const kItemCountMax = 10;
+const kFlashingDuration = 100;
+const kUnselectedItemAlpha = 0.1;
+const kItemFillAlpha = 0.375;
+const kItemLineAlpha = 0.75;
+const kTotalFillAlpha = 0.125;
+const kTotalLineAlpha = 0.375;
+
+const kItemColors = [
+  "#ff3301",
+  "#ffa200",
+  "#f3ff00",
+  "#86ff02",
+  "#1cff00",
+  "#00ff56",
+  "#02ffbf",
+  "#01d0ff",
+  "#0065ff",
+  "#0600fb",
+];
+const kTotalColor = "#fe0002";
+
+const selectedDatasets = [];
+
+const el = {};
+[
+  "body", "chartarea", "chart", "landing", "filename", "shortcut", "fileinput", "dropoverlay"
+].forEach(id => { el[id] = document.querySelector(`#${id}`); });
+
+// Setup event handlers
+
+const dragDropHandler = function(event) {
+  event.stopPropagation();
+  event.preventDefault();
+  if (event.type == "dragenter") {
+    // Enter
+    el.dropoverlay.classList.remove("--collapse");
+    event.dataTransfer.dropEffect = "copy";
+  } else if (event.type == "dragleave") {
+    // Leave
+    el.dropoverlay.classList.add("--collapse");
+  } else if (event.type == "drop") {
+    // Drop
+    el.dropoverlay.classList.add("--collapse");
+    const file = (0 < event.dataTransfer.files.length) ? event.dataTransfer.files[0] : null;
+    if (file) {
+      loadFromFile(file);
+    }
+  } else {}
+};
+el.body.ondragenter = dragDropHandler;
+el.dropoverlay.ondragover = dragDropHandler;
+el.dropoverlay.ondragleave = dragDropHandler;
+el.dropoverlay.ondrop = dragDropHandler;
+
+el.fileinput.onchange = function(event) {
+  const input = event.target;
+  if (input.files[0]) {
+    loadFromFile(input.files[0]);
+  }
+};
+
+window.onkeydown = function(event) {
+  if (event.key == "Escape") {
+    selectDataset(massifChart, null);
+  } else if (event.key == "c" && event.ctrlKey) {
+    if (massifChart.tooltip.options.enabled) {
+      document.addEventListener("copy", onTooltipCopy, false);
+      document.execCommand("copy");
+    }
+  }
+};
+
+// Setup chart control
+
+const computedStyle = getComputedStyle(el.body);
+Chart.defaults.color = computedStyle.color;
+Chart.defaults.borderColor = computedStyle.borderColor;
+Chart.defaults.font.family = "consolas,monospace";
+
+const massifChart = new Chart(el.chart, {
+  data: {labels: [], datasets: []},
+  options: {
+    animation: false,
+    responsive: true,
+    maintainAspectRatio: false,
+    onClick: onChartClick,
+    onHover: onChartHover,
+    plugins: {
+      title: {
+        display: true,
+        font: {
+          size: kChartTitleFontSize,
+        },
+      },
+      legend: {
+        display: true,
+        position: "chartArea",
+        reverse: true,
+        maxWidth: kChartLegendWidthMax,
+        onClick: onLegendClick,
+        onHover: onLegendHover,
+      },
+      tooltip: {
+        mode: "nearest",
+        position: "average",
+        intersect: false,
+      },
+    },
+    elements: {
+      line: {
+          borderWidth: kChartElementBorderWidth,
+          tension: 0,
+      },
+      point: {
+          radius: kChartElementPointRadius,
+      }
+    },
+    scales: {
+      x: {
+        title: {
+          display: true,
+          font: { size: kChartScaleFontSize },
+        },
+      },
+      y: {
+        beginAtZero: true,
+        stacked: true,
+        position: "right",
+        title: {
+          display: true,
+          font: { size: kChartScaleFontSize },
+        },
+      }
+    }
+  }
+});
+
+function onTooltipCopy(event) {
+  let text = "";
+  const tooltip = massifChart.tooltip;
+  if (tooltip.options.enabled) {
+    text += tooltip.title + "\n";
+    tooltip.body.forEach((item) => {
+      text += item.lines[0] + "\n";
+    });
+  }
+  if (text) {
+    event.clipboardData.setData('text/plain', text);
+
+    // Flash text
+    const color = massifChart.tooltip.options.bodyColor;
+    massifChart.tooltip.options.bodyColor = "transparent";
+    massifChart.update();
+    setTimeout(() => {
+      massifChart.tooltip.options.bodyColor = color;
+      massifChart.update();
+    }, kFlashingDuration);
+  }
+  event.preventDefault();
+  document.removeEventListener("copy", onTooltipCopy);
+}
+
+function onChartClick(event) {
+  const chart = event.chart;
+  for (let dataPoint of chart.tooltip.dataPoints) {
+    selectDataset(chart, dataPoint.datasetIndex, event.native.ctrlKey);
+  }
+}
+
+function onChartHover(event) {
+  const chart = event.chart;
+  if (!chart.options.plugins.tooltip.enabled) {
+    chart.options.plugins.tooltip.enabled = true;
+    chart.update();
+  }
+}
+
+function onLegendClick(event, item, legend) {
+  selectDataset(legend.chart, item.datasetIndex, event.native.ctrlKey);
+}
+
+function onLegendHover(event, item, legend) {
+  const chart = legend.chart;
+  if (chart.options.plugins.tooltip.enabled) {
+    chart.options.plugins.tooltip.enabled = false;
+    chart.update();
+  }
+}
+
+function selectDataset(chart, selectedIndex, multiSelection=false) {
+  if (selectedIndex != null) {
+    const dataset = chart.data.datasets[selectedIndex];
+    if (dataset.label == kTotalLabel) {
+      return;
+    }
+
+    // Update selection state
+    const already = selectedDatasets[selectedIndex];
+    const currentCount = selectedDatasets.filter((item) => item).length;
+    if (multiSelection) {
+      if (already) {
+        selectedDatasets[selectedIndex] = null;
+      } else {
+        selectedDatasets[selectedIndex] = dataset;
+      }
+    } else {
+      selectedDatasets.fill(null);
+      if (!already || 1 != currentCount) {
+        selectedDatasets[selectedIndex] = dataset;
+      }
+    }
+  } else {
+    selectedDatasets.fill(null);
+  }
+  const count = selectedDatasets.filter((item) => item).length;
+
+  const applyColor = (dataset, fillColor, lineColor) => {
+    dataset.backgroundColor = fillColor;
+    dataset.borderColor = lineColor;
+    dataset.pointBackgroundColor = lineColor;
+    dataset.pointBorderColor = lineColor;
+  }
+
+  chart.data.datasets.forEach((dataset, index) => {
+    if (dataset.label != kTotalLabel) {
+      if (selectedDatasets[index] || count == 0) {
+        // Restore to normal color
+        if (dataset.__stash) {
+          applyColor(dataset, dataset.__stash.fillColor, dataset.__stash.lineColor)
+          dataset.__stash = null;
+        }
+      } else {
+        // Change to unselected color
+        if (!dataset.__stash) {
+          dataset.__stash = { fillColor: dataset.backgroundColor, lineColor: dataset.borderColor };
+          const fillColor = dataset.backgroundColor.slice(0, -2) + toHex2(kUnselectedItemAlpha);
+          const lineColor = dataset.borderColor.slice(0, -2) + toHex2(kUnselectedItemAlpha);
+          applyColor(dataset, fillColor, lineColor)
+        }
+      }
+    }
+  });
+  chart.update();
+}
+
+function loadFromUrl(url) {
+  const xhr = new XMLHttpRequest();
+  xhr.open("GET", url, false);
+  xhr.onreadystatechange = function() {
+    if (xhr.readyState == 4) {
+      open(xhr.responseText, url.split("/").slice(-1)[0]);
+    }
+  }
+  xhr.send();
+}
+
+function loadFromFile(file) {
+  reader = new FileReader();
+  reader.onload = function(event) {
+    open(reader.result, file.name);
+  }
+  reader.readAsText(file);
+}
+
+function open(text, filename) {
+  const reader = new TextReader(text.replace("\r\n", "\n"), "\n");
+
+  console.time("Parse massif data");
+  const massif = new Massif(reader);
+  console.timeEnd("Parse massif data");
+
+  console.time("Load chart");
+  loadChart(massifChart, massif, filename);
+  console.timeEnd("Load chart");
+
+  el.filename.textContent = filename;
+  el.landing.classList.add("--collapse");
+  el.shortcut.classList.remove("--hidden");
+  el.chartarea.classList.remove("--collapse");
+
+  return true;
+}
+
+function loadChart(chart, massif, title) {
+  const instUnits = [
+    { pow:1, label: "x1" },
+    { pow:1000, label: "x1,000" },
+    { pow:1000 * 1000, label: "x1,000,000" },
+    { pow:1000 * 1000 * 1000, label: "x1,000,000,000" },
+  ];
+  const timeUnits = [
+    { pow:1, label: "ms" },
+    { pow:1000, label: "s" },
+    { pow:1000 * 60, label: "min." },
+    { pow:1000 * 60 * 60, label: "hour" },
+  ];
+  const byteUnits = [
+    { pow:1, label: "B" },
+    { pow:1024, label: "KiB" },
+    { pow:1024 * 1024, label: "MiB" },
+    { pow:1024 * 1024 * 1024, label: "GiB" },
+  ];
+
+  const maxTime = massif.snapshots[massif.snapshots.length - 1].time;
+  const xUnits = {i: instUnits, ms: timeUnits, B: byteUnits}[massif.timeUnit];
+  let xUnit = xUnits[0];
+  for (let u of xUnits) {
+    if (maxTime <= u.pow) {
+      break;
+    }
+    xUnit = u;
+  }
+
+  const peakSize = massif.snapshots[massif.peakIndex].heapSize;
+  let yUnit = byteUnits[0];
+  for (let u of byteUnits) {
+    if (peakSize <= u.pow) {
+      break;
+    }
+    yUnit = u;
+  }
+
+  // Setup datasets
+
+  const pushedNames = [];
+  let datasets = [];
+  for (let snapshot of massif.snapshots) {
+    for (let allocator of snapshot.allocators) {
+      for (let sourceAllocator of allocator.sources) {
+        name = sourceAllocator.func;
+        if (sourceAllocator.addr && !pushedNames.includes(name)) {
+          pushedNames.push(name);
+          datasets.push({
+            type: "line",
+            fill: "stack",
+            label: name,
+            data: [],
+            stack: 1,
+            order: 1,
+            __sizeAtPeak: 0
+          });
+        }
+      }
+    }
+  }
+
+  if (0 < massif.snapshots.length && massif.snapshots[0].allocators.length == 0) {
+    // Add dummy dataset
+    for (let dataset of datasets) {
+      dataset.data.push({
+        x: massif.snapshots[0].time,
+        y: 0
+      });
+    }
+  }
+
+  for (let snapshot of massif.snapshots) {
+    if (0 < snapshot.allocators.length) {
+      for (let dataset of datasets) {
+        let size = 0;
+        for (let allocator of snapshot.allocators) {
+          for (let sourceAllocator of allocator.sources) {
+            if (sourceAllocator.func == dataset.label) {
+              size = sourceAllocator.size;
+              break;
+            }
+          }
+        }
+        dataset.data.push({
+          x: snapshot.time,
+          y: size,
+          __snapshot: snapshot
+        });
+        if (snapshot.isPeak) {
+          dataset.__sizeAtPeak = size;
+        }
+      }
+    }
+  }
+
+  datasets.sort((a, b) => b.__sizeAtPeak - a.__sizeAtPeak);
+  datasets = datasets.slice(0, kItemCountMax);
+  // Add index to label
+  datasets.forEach((dataset, index, datasets) => {
+    const no = ("0" + (index + 1)).slice(-2);
+    dataset.label = `${no}:${dataset.label}`;
+    dataset.backgroundColor = kItemColors[index] + toHex2(kItemFillAlpha);
+    dataset.borderColor = kItemColors[index] + toHex2(kItemLineAlpha);
+  });
+
+  const totalData = [];
+  for (let snapshot of massif.snapshots) {
+    totalData.push({
+      x: snapshot.time,
+      y: snapshot.heapSize,
+      __snapshot: snapshot
+    });
+  }
+  datasets.push({
+    label: kTotalLabel,
+    data: totalData,
+    type: "line",
+    fill: true,
+    backgroundColor: kTotalColor + toHex2(kTotalFillAlpha),
+    borderColor: kTotalColor + toHex2(kTotalLineAlpha),
+    pointBackgroundColor: kTotalColor + toHex2(kTotalLineAlpha),
+    stack: 2,
+    order: 2
+  });
+
+  const times = massif.snapshots.map((snapshot) => snapshot.time);
+
+  chart.options.plugins.title.text = title;
+  // chart.options.plugins.title.text = [title, `Peak of ${formatValue(peakSize, yUnit)} at snapshot #${massif.peakIndex}`];
+
+  // Setup x/y scales
+
+  const xTitle = {
+    i: "Executed CPU instructions",
+    ms: "Elapsed time",
+    B: "Amount of allocated/deallocated memory"
+  }[massif.timeUnit];
+  // Title
+  chart.scales.x.options.title.text = `${xTitle} (${xUnit.label})`;
+  chart.scales.y.options.title.text = `Memory heap size (${yUnit.label})`;
+  // Format label for scale ticks
+  chart.scales.x.options.ticks.callback = (value, index) => `${formatValue(times[index], xUnit, false)}`;
+  chart.scales.y.options.ticks.callback = (value) => `${formatValue(value, yUnit, false)}`;
+  
+  // Setup tooltip
+
+  chart.options.plugins.tooltip.callbacks.title = (items) => {
+    const item = items && items[0];
+    const snapshot = item && item.dataset.data[item.dataIndex].__snapshot;
+    return snapshot ? `Snapshot #${snapshot.index}` : "-";
+  };
+  chart.options.plugins.tooltip.callbacks.label = (item) => {
+    const data = item.dataset.data[item.dataIndex];
+    return `${item.dataset.label} - ${formatValue(data.y, yUnit)}`;
+  };
+
+  // Update chart
+
+  chart.data.labels = times;
+  chart.data.datasets = datasets;
+  chart.update();
+}
+
+function toHex2(value) {
+  return ("0" + Math.round(value * 255).toString(16)).slice(-2);
+}
+
+function formatValue(value, unit, showUnit=true) {
+  const n = (value / unit.pow);
+  const s = Number.isInteger(n) ? n : n.toFixed(2);
+  return showUnit ? `${s} ${unit.label}` : s;
+}
+
+})();
+</script>
+</html>
