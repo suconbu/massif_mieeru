@@ -29,10 +29,6 @@ header {
 .header__filename {
     margin-right: auto;
 }
-/* main {
-    height: 100vh;
-    padding: 3rem 1rem 3rem;
-} */
 footer {
     position: fixed;
     left: 0; right: 0; bottom: 0;
@@ -43,17 +39,6 @@ footer {
     justify-content: start;
     align-items: center;
 }
-.landing {
-    /* height: 100%; */
-}
-/* .landing {
-    position: fixed;
-    width: 100vw; height: 100vh;
-    display: flex;
-    flex-flow: column nowrap;
-    justify-content: center;
-    align-items: center;
-} */
 .dropoverlay {
     position: fixed;
     left: 0.5rem; top: 0.5rem; right: 0.5rem; bottom: 0.5rem;
@@ -62,8 +47,7 @@ footer {
     justify-content: center;
     align-items: center;
     font-size: 2rem;
-    border-width: 8px;
-    border-style: dashed;
+    border: 8px dashed #ccc;
     background-color: #ccc4;
     box-shadow: 0 0 0 0.5rem #ccc4;
     z-index: 2;
